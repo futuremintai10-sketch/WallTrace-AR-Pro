@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: build-apk-${{ github.ref }}
@@ -80,6 +80,19 @@ jobs:
           name: WallTrace-AR-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Publish public release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk WallTrace-AR.apk
+          TAG="build-${{ github.run_number }}"
+          gh release create "$TAG" WallTrace-AR.apk \
+            --target "$GITHUB_SHA" \
+            --title "WallTrace AR (build ${{ github.run_number }})" \
+            --notes "Debug APK built from $GITHUB_SHA. Install on an ARCore-supported Android 7.0+ phone." \
+            --latest
 
       - name: Upload test and lint reports
         if: always()

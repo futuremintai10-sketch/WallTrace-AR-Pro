@@ -29,3 +29,7 @@ To build locally, open the project in Android Studio (JDK 17), or run `gradle as
 ## Limitations
 
 No phone AR system detects every wall. Blank, glossy, reflective or poorly lit walls may not be detected; use more light, aim at edges or texture, or use the approximate placement. Some drift is possible during long sessions or after tracking is lost.
+
+## Download
+
+Latest APK (public, no login): https://github.com/futuremintai10-sketch/WallTrace-AR-Pro/releases/latest/download/WallTrace-AR.apk
