@@ -65,6 +65,10 @@ class WallTracker : ImageAnalysis.Analyzer {
 
     private val pending = AtomicReference<Command?>(null)
 
+    /** Sketch corners in view pixels while positioning; used to rate texture where it matters. */
+    @Volatile
+    private var scanRegion: FloatArray? = null
+
     @Volatile
     private var viewWidth = 0
 
@@ -90,12 +94,19 @@ class WallTracker : ImageAnalysis.Analyzer {
     private var lastViewCorners: FloatArray? = null
     private var frameIndex = 0L
 
-    private val orb by lazy { ORB.create(ORB_FEATURES) }
+    // 12 pyramid levels x 1.2 covers ~7x scale change (walking up to the wall); low FAST threshold
+    // finds more corners on plain walls. Score type 0 = HARRIS_SCORE.
+    private val orb by lazy { ORB.create(ORB_FEATURES, 1.2f, 12, 31, 0, 2, 0, 31, 10) }
     private val matcher by lazy { DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE_HAMMING) }
 
     fun setViewSize(width: Int, height: Int) {
         viewWidth = width
         viewHeight = height
+    }
+
+    /** Updates the sketch area (view pixels) used to rate wall texture before locking. */
+    fun setScanRegion(viewCorners: FloatArray?) {
+        scanRegion = viewCorners?.copyOf()
     }
 
     /** Locks the sketch to the wall at [viewCorners] (TL, TR, BR, BL in view pixels). */
@@ -165,7 +176,11 @@ class WallTracker : ImageAnalysis.Analyzer {
 
     private fun scan(current: Mat, geometry: FrameGeometry) {
         if (frameIndex % SCAN_INTERVAL != 0L) return
-        val pts = detectFeatures(current, null, SCAN_MAX_POINTS)
+        // Only the wall around the sketch is used for tracking, so only rate (and show) that area.
+        val region = scanRegion?.let { geometry.viewToBuffer(it) }
+        val mask = region?.let { regionMask(current, it) }
+        val pts = detectFeatures(current, mask, SCAN_MAX_POINTS)
+        mask?.release()
         _state.value = State(
             status = Status.IDLE,
             points = geometry.bufferToView(pts),
@@ -180,14 +195,17 @@ class WallTracker : ImageAnalysis.Analyzer {
     private fun startTracking(current: Mat, bufferCorners: FloatArray, geometry: FrameGeometry) {
         resetTracking()
         refCorners = bufferCorners
-        refPts = detectFeatures(current, null, MAX_POINTS)
+        // A homography is only valid for points on ONE plane. Using the whole frame mixed in the
+        // floor, furniture and other walls, so moving towards the wall (parallax) dragged the
+        // sketch with the wrong surface. Track only the wall area around the sketch.
+        val mask = regionMask(current, bufferCorners)
+        refPts = detectFeatures(current, mask, MAX_POINTS)
         curPts = refPts.copyOf()
 
         val keypoints = MatOfKeyPoint()
         val descriptors = Mat()
-        val noMask = Mat()
-        orb.detectAndCompute(current, noMask, keypoints, descriptors)
-        noMask.release()
+        orb.detectAndCompute(current, mask, keypoints, descriptors)
+        mask.release()
         refOrbPts = keypointsToArray(keypoints)
         refDescriptors = descriptors
         keypoints.release()
@@ -277,7 +295,8 @@ class WallTracker : ImageAnalysis.Analyzer {
                 if (orbEstimate.refPoints.size / 2 >= DRIFT_MIN_INLIERS) {
                     val a = QuadMath.applyHomography(h, refCorners)
                     val b = QuadMath.applyHomography(orbEstimate.h, refCorners)
-                    if (a != null && b != null && QuadMath.maxCornerDistance(a, b) < DRIFT_MAX_JUMP_PX) {
+                    val allowed = if (a != null) maxOf(DRIFT_MIN_JUMP_PX, QuadMath.diagonal(a) * DRIFT_JUMP_FRACTION) else 0f
+                    if (a != null && b != null && QuadMath.maxCornerDistance(a, b) < allowed) {
                         h = orbEstimate.h
                         inlierRef = orbEstimate.refPoints
                         inlierCur = orbEstimate.curPoints
@@ -287,7 +306,7 @@ class WallTracker : ImageAnalysis.Analyzer {
         }
 
         val corners = QuadMath.applyHomography(h, refCorners)
-        if (corners == null || !QuadMath.isPlausible(corners, refCorners)) {
+        if (corners == null || !QuadMath.isPlausible(corners, refCorners, MAX_AREA_RATIO)) {
             markLost()
             return
         }
@@ -310,7 +329,7 @@ class WallTracker : ImageAnalysis.Analyzer {
         val estimate = orbMatch(current) ?: return
         if (estimate.refPoints.size / 2 < RELOCALIZE_MIN_INLIERS) return
         val corners = QuadMath.applyHomography(estimate.h, refCorners) ?: return
-        if (!QuadMath.isPlausible(corners, refCorners)) return
+        if (!QuadMath.isPlausible(corners, refCorners, MAX_AREA_RATIO)) return
         refPts = estimate.refPoints
         curPts = estimate.curPoints
         replenish(current, estimate.h)
@@ -336,7 +355,8 @@ class WallTracker : ImageAnalysis.Analyzer {
     /** Adds fresh corners from the current frame, mapped back into reference coordinates. */
     private fun replenish(current: Mat, h: DoubleArray) {
         val inverse = QuadMath.invert3x3(h) ?: return
-        val mask = Mat(current.rows(), current.cols(), CvType.CV_8UC1, Scalar(255.0))
+        val quad = QuadMath.applyHomography(h, refCorners) ?: return
+        val mask = regionMask(current, quad)
         var i = 0
         while (i < curPts.size) {
             Imgproc.circle(mask, Point(curPts[i].toDouble(), curPts[i + 1].toDouble()), MIN_DISTANCE.toInt(), Scalar(0.0), -1)
@@ -420,6 +440,21 @@ class WallTracker : ImageAnalysis.Analyzer {
         return estimateHomography(ref.toFloatArray(), cur.toFloatArray(), ORB_RANSAC_PX)
     }
 
+    /** 8-bit mask that is 255 inside [quad] (buffer px) grown by [REGION_EXPAND] around its centre. */
+    private fun regionMask(image: Mat, quad: FloatArray): Mat {
+        val mask = Mat(image.rows(), image.cols(), CvType.CV_8UC1, Scalar(0.0))
+        val grown = QuadMath.expand(quad, REGION_EXPAND)
+        val poly = MatOfPoint(
+            Point(grown[0].toDouble(), grown[1].toDouble()),
+            Point(grown[2].toDouble(), grown[3].toDouble()),
+            Point(grown[4].toDouble(), grown[5].toDouble()),
+            Point(grown[6].toDouble(), grown[7].toDouble())
+        )
+        Imgproc.fillConvexPoly(mask, poly, Scalar(255.0))
+        poly.release()
+        return mask
+    }
+
     private fun detectFeatures(image: Mat, mask: Mat?, maxCount: Int): FloatArray {
         val corners = MatOfPoint()
         val m = mask ?: Mat()
@@ -475,11 +510,13 @@ class WallTracker : ImageAnalysis.Analyzer {
 
     private companion object {
         const val TAG = "WallTracker"
-        const val MAX_POINTS = 400
+        const val MAX_POINTS = 500
         const val SCAN_MAX_POINTS = 200
         const val SCAN_INTERVAL = 3L
-        const val QUALITY = 0.01
-        const val MIN_DISTANCE = 10.0
+        const val QUALITY = 0.005
+        const val MIN_DISTANCE = 8.0
+        const val REGION_EXPAND = 1.6f
+        const val MAX_AREA_RATIO = 400f
         const val LK_WINDOW = 21.0
         const val LK_LEVELS = 3
         const val FB_MAX_ERROR = 1.0
@@ -489,7 +526,7 @@ class WallTracker : ImageAnalysis.Analyzer {
         const val REPLENISH_BELOW = 200
         const val SMOOTH_ALPHA = 0.6f
         const val SMOOTH_SNAP_PX = 25f
-        const val ORB_FEATURES = 800
+        const val ORB_FEATURES = 1000
         const val ORB_RATIO = 0.75f
         const val ORB_MIN_MATCHES = 15
         const val ORB_RANSAC_PX = 4.0
@@ -497,6 +534,7 @@ class WallTracker : ImageAnalysis.Analyzer {
         const val RELOCALIZE_MIN_INLIERS = 15
         const val DRIFT_CHECK_INTERVAL = 30L
         const val DRIFT_MIN_INLIERS = 40
-        const val DRIFT_MAX_JUMP_PX = 40f
+        const val DRIFT_MIN_JUMP_PX = 40f
+        const val DRIFT_JUMP_FRACTION = 0.15f
     }
 }

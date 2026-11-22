@@ -122,6 +122,24 @@ object QuadMath {
         return ratio in (1f / maxAreaRatio)..maxAreaRatio
     }
 
+    /** Scales a quad about its centroid by [factor]. */
+    fun expand(quad: FloatArray, factor: Float): FloatArray {
+        var cx = 0f
+        var cy = 0f
+        for (i in 0 until 4) {
+            cx += quad[i * 2]
+            cy += quad[i * 2 + 1]
+        }
+        cx /= 4f
+        cy /= 4f
+        return FloatArray(8) { i ->
+            if (i % 2 == 0) cx + (quad[i] - cx) * factor else cy + (quad[i] - cy) * factor
+        }
+    }
+
+    /** Length of the TL-BR diagonal. */
+    fun diagonal(quad: FloatArray): Float = hypot(quad[4] - quad[0], quad[5] - quad[1])
+
     /** Largest corner displacement between two quads, in pixels. */
     fun maxCornerDistance(a: FloatArray, b: FloatArray): Float {
         var max = 0f

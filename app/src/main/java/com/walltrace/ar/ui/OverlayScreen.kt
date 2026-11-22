@@ -227,6 +227,22 @@ private fun OverlayContent(viewModel: MainViewModel, onBack: () -> Unit) {
         return w to w / ratio
     }
 
+    // Tell the tracker where the sketch is so it rates (and shows dots for) that part of the wall.
+    LaunchedEffect(offset, scale, rotation, viewSize, processed, locked) {
+        val bitmap = processed
+        if (locked || bitmap == null || viewSize.width == 0 || viewSize.height == 0) {
+            tracker.setScanRegion(null)
+        } else {
+            val (w, h) = sketchBoxPx(bitmap)
+            tracker.setScanRegion(
+                QuadMath.imageCorners(
+                    viewSize.width.toFloat(), viewSize.height.toFloat(), w, h,
+                    offset.x, offset.y, scale, rotation
+                )
+            )
+        }
+    }
+
     fun lockNow() {
         val bitmap = processed ?: return
         if (viewSize.width == 0 || viewSize.height == 0) return
@@ -516,7 +532,7 @@ private fun bindCamera(
 }
 
 private fun hintText(locked: Boolean, state: WallTracker.State): String = when {
-    !locked -> "Drag to move · Pinch to resize · Twist to rotate, then LOCK"
+    !locked -> "Place the sketch, aim so the wall around it shows dots, then LOCK"
     state.status == WallTracker.Status.UNAVAILABLE -> "Locked on screen. Keep the phone still while you trace."
     state.status == WallTracker.Status.LOST -> "Point the camera back at the locked area to restore the sketch."
     else -> "The sketch follows the wall. Move slowly and keep the area in view."
@@ -527,8 +543,8 @@ private fun TrackingStatusChip(locked: Boolean, state: WallTracker.State, modifi
     val (text, color) = when {
         !locked -> when {
             state.status == WallTracker.Status.UNAVAILABLE -> "Wall tracking unavailable" to WtColors.Warning
-            state.featureCount >= 120 -> "Wall texture: good · ${state.featureCount} points" to WtColors.Teal
-            state.featureCount >= 50 -> "Wall texture: fair · ${state.featureCount} points" to WtColors.Warning
+            state.featureCount >= GOOD_TEXTURE_POINTS -> "Wall texture: good · ${state.featureCount} points" to WtColors.Teal
+            state.featureCount >= FAIR_TEXTURE_POINTS -> "Wall texture: fair · ${state.featureCount} points" to WtColors.Warning
             else -> "Wall texture: low · add light or marks" to WtColors.Error
         }
         state.status == WallTracker.Status.TRACKING -> "Locked to wall · ${state.featureCount} points" to WtColors.Teal
@@ -685,3 +701,5 @@ private const val TAG = "WallTraceOverlay"
 private const val OVERLAY_MAX_SIDE = 1280
 private const val MIN_SCALE = 0.1f
 private const val MAX_SCALE = 10f
+private const val GOOD_TEXTURE_POINTS = 80
+private const val FAIR_TEXTURE_POINTS = 30

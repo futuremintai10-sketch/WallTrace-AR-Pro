@@ -58,6 +58,22 @@ class TrackingMathTest {
     }
 
     @Test
+    fun plausibility_allowsWalkingUpToTheWall() {
+        val ref = floatArrayOf(100f, 100f, 200f, 100f, 200f, 200f, 100f, 200f)
+        // 8x closer: area grows 64x, which must not count as lost tracking.
+        val close = floatArrayOf(-250f, -250f, 550f, -250f, 550f, 550f, -250f, 550f)
+        assertTrue(QuadMath.isPlausible(close, ref, 400f))
+        assertFalse(QuadMath.isPlausible(close, ref, 25f))
+    }
+
+    @Test
+    fun expand_scalesAboutCentroid() {
+        val quad = floatArrayOf(0f, 0f, 10f, 0f, 10f, 10f, 0f, 10f)
+        assertArrayEquals(floatArrayOf(-5f, -5f, 15f, -5f, 15f, 15f, -5f, 15f), QuadMath.expand(quad, 2f), 1e-5f)
+        assertEquals(Math.hypot(10.0, 10.0).toFloat(), QuadMath.diagonal(quad), 1e-4f)
+    }
+
+    @Test
     fun smoothing_dampsJitterAndSnapsOnLargeMotion() {
         val a = floatArrayOf(0f, 0f, 10f, 0f, 10f, 10f, 0f, 10f)
         val jitter = a.map { it + 2f }.toFloatArray()
