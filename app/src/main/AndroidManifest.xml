@@ -6,9 +6,10 @@
     <uses-feature
         android:name="android.hardware.camera"
         android:required="true" />
+    <!-- AR is optional: phones without ARCore use Overlay mode. -->
     <uses-feature
         android:name="android.hardware.camera.ar"
-        android:required="true" />
+        android:required="false" />
     <uses-feature
         android:glEsVersion="0x00030000"
         android:required="true" />
@@ -23,7 +24,7 @@
 
         <meta-data
             android:name="com.google.ar.core"
-            android:value="required" />
+            android:value="optional" />
 
         <activity
             android:name=".MainActivity"

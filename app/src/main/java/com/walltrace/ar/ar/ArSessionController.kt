@@ -22,7 +22,7 @@ sealed interface ArSetupState {
     data object Starting : ArSetupState
     data object Installing : ArSetupState
     data object Running : ArSetupState
-    data class Error(val message: String, val canRetry: Boolean) : ArSetupState
+    data class Error(val message: String, val canRetry: Boolean, val offerOverlay: Boolean = false) : ArSetupState
 }
 
 /**
@@ -88,6 +88,12 @@ class ArSessionController(
     }
 
     private fun createSession(): Session? {
+        if (ArCoreApk.getInstance().checkAvailability(activity) ==
+            ArCoreApk.Availability.UNSUPPORTED_DEVICE_NOT_CAPABLE
+        ) {
+            _state.value = ArSetupState.Error(UNSUPPORTED_MESSAGE, canRetry = false, offerOverlay = true)
+            return null
+        }
         return try {
             when (ArCoreApk.getInstance().requestInstall(activity, !installRequested)) {
                 ArCoreApk.InstallStatus.INSTALL_REQUESTED -> {
@@ -99,21 +105,21 @@ class ArSessionController(
             }
             Session(activity).also { configure(it) }
         } catch (e: UnavailableUserDeclinedInstallationException) {
-            fail("Google Play Services for AR is required. Please install it to continue.", true, e)
+            fail(NOT_INSTALLED_MESSAGE, canRetry = true, e = e, offerOverlay = true)
         } catch (e: UnavailableArcoreNotInstalledException) {
-            fail("Google Play Services for AR is not installed.", true, e)
+            fail(NOT_INSTALLED_MESSAGE, canRetry = true, e = e, offerOverlay = true)
         } catch (e: UnavailableApkTooOldException) {
-            fail("Please update Google Play Services for AR from the Play Store.", true, e)
+            fail("Please update Google Play Services for AR from the Play Store.", canRetry = true, e = e, offerOverlay = true)
         } catch (e: UnavailableSdkTooOldException) {
-            fail("This app needs an update to work with your ARCore version.", false, e)
+            fail("This app needs an update to work with your ARCore version.", canRetry = false, e = e, offerOverlay = true)
         } catch (e: UnavailableDeviceNotCompatibleException) {
-            fail("This device does not support ARCore (Google Play Services for AR).", false, e)
+            fail(UNSUPPORTED_MESSAGE, canRetry = false, e = e, offerOverlay = true)
         } catch (e: UnavailableException) {
-            fail("AR is not available on this device.", false, e)
+            fail("AR is not available on this device.", canRetry = false, e = e, offerOverlay = true)
         } catch (e: FatalException) {
-            fail("ARCore failed to start. Please try again.", true, e)
+            fail("ARCore failed to start. Please try again.", canRetry = true, e = e, offerOverlay = true)
         } catch (e: SecurityException) {
-            fail("Camera permission is required.", true, e)
+            fail("Camera permission is required.", canRetry = true, e = e)
         }
     }
 
@@ -129,13 +135,18 @@ class ArSessionController(
         renderer.depthEnabled = depthSupported
     }
 
-    private fun fail(message: String, canRetry: Boolean, e: Exception): Session? {
+    private fun fail(message: String, canRetry: Boolean, e: Exception, offerOverlay: Boolean = false): Session? {
         Log.e(TAG, message, e)
-        _state.value = ArSetupState.Error(message, canRetry)
+        _state.value = ArSetupState.Error(message, canRetry, offerOverlay)
         return null
     }
 
     private companion object {
         const val TAG = "WallTraceSession"
+        const val UNSUPPORTED_MESSAGE =
+            "This phone doesn't support ARCore, so wall tracking can't run here. Use Overlay mode instead."
+        const val NOT_INSTALLED_MESSAGE =
+            "Google Play Services for AR isn't installed. If the Play Store says your device isn't " +
+                "compatible, this phone can't run AR: use Overlay mode instead."
     }
 }

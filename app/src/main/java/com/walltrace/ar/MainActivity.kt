@@ -16,6 +16,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.walltrace.ar.ui.ArScreen
 import com.walltrace.ar.ui.HomeScreen
+import com.walltrace.ar.ui.OverlayScreen
 import com.walltrace.ar.ui.theme.WallTraceTheme
 import com.walltrace.ar.ui.theme.WtColors
 
@@ -46,7 +47,11 @@ private fun WallTraceApp(viewModel: MainViewModel = viewModel()) {
             Screen.HOME -> HomeScreen(viewModel)
             Screen.AR -> {
                 BackHandler { viewModel.closeAr() }
-                ArScreen(viewModel = viewModel, onBack = viewModel::closeAr)
+                ArScreen(viewModel = viewModel, onBack = viewModel::closeAr, onUseOverlay = viewModel::useOverlayMode)
+            }
+            Screen.OVERLAY -> {
+                BackHandler { viewModel.closeAr() }
+                OverlayScreen(viewModel = viewModel, onBack = viewModel::closeAr)
             }
         }
     }

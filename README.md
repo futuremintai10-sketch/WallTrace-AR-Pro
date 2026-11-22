@@ -13,6 +13,10 @@ Android app that places an image on a real wall with ARCore so you can trace or 
 
 If no wall is detected after a few seconds, a labelled **Place approximately** fallback anchors the sketch about 1.2 m in front of the camera. The app clearly marks this as not attached to a detected wall.
 
+### Overlay mode (phones without ARCore)
+
+On phones that Google doesn't support for ARCore, WallTrace opens **Overlay mode** automatically. You can also switch to it from the AR error screen. The image is drawn over the live camera preview with the same adjustments, and you can move, resize, rotate and lock it. There is no wall tracking in this mode: the image is fixed to the screen, so keep the phone still on a stand while tracing. The app labels this clearly.
+
 Projects (image + settings) are saved automatically and work offline. ARCore anchors last only for one session, so after reopening a project you place the sketch on the wall again.
 
 ## Build
@@ -23,7 +27,7 @@ To build locally, open the project in Android Studio (JDK 17), or run `gradle as
 
 ## Requirements
 
-- An ARCore-supported Android 7.0+ device with Google Play Services for AR (the app prompts you to install it).
+- Android 7.0+. AR mode needs an ARCore-supported phone with Google Play Services for AR; other phones use Overlay mode.
 - OpenGL ES 3.0.
 
 ## Limitations

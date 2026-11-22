@@ -7,6 +7,7 @@ import android.util.Log
 import android.util.LruCache
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.ar.core.ArCoreApk
 import com.walltrace.ar.data.Project
 import com.walltrace.ar.data.ProjectRepository
 import com.walltrace.ar.image.ImageImportException
@@ -26,7 +27,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
-enum class Screen { HOME, AR }
+enum class Screen { HOME, AR, OVERLAY }
+
+/** Whether this phone can run ARCore wall tracking. */
+enum class ArSupport { CHECKING, SUPPORTED, UNSUPPORTED, UNKNOWN }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -46,6 +50,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _adjustments = MutableStateFlow(SketchAdjustments())
     val adjustments: StateFlow<SketchAdjustments> = _adjustments.asStateFlow()
 
+    private val _arSupport = MutableStateFlow(ArSupport.CHECKING)
+    val arSupport: StateFlow<ArSupport> = _arSupport.asStateFlow()
+
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
 
@@ -60,6 +67,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var loadJob: Job? = null
 
     init {
+        viewModelScope.launch { checkArSupport() }
         viewModelScope.launch {
             try {
                 repository.load()
@@ -80,14 +88,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 flushPendingSave()
                 val project = repository.importImage(uri)
                 val bitmap = repository.loadBitmap(project, ImageLoader.MAX_TEXTURE_SIDE)
-                // Keep the user's current opacity when swapping images inside AR.
-                val keepOpacity = _screen.value == Screen.AR && _sketchBitmap.value != null
+                // Keep the user's current opacity when swapping images inside AR / Overlay.
+                val keepOpacity = _screen.value != Screen.HOME && _sketchBitmap.value != null
                 val adjustments = if (keepOpacity) SketchAdjustments(opacity = _adjustments.value.opacity) else project.adjustments
                 _currentProject.value = project
                 _adjustments.value = adjustments
                 _sketchBitmap.value = bitmap
                 if (keepOpacity) repository.updateAdjustments(project.id, adjustments)
-                _screen.value = Screen.AR
+                _screen.value = sketchScreen()
             } catch (e: ImageImportException) {
                 Log.w(TAG, "Import failed", e)
                 _messages.tryEmit(e.message ?: "Couldn't import that image.")
@@ -111,7 +119,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _currentProject.value = project
                 _adjustments.value = project.adjustments
                 _sketchBitmap.value = bitmap
-                _screen.value = Screen.AR
+                _screen.value = sketchScreen()
             } catch (e: ImageImportException) {
                 Log.w(TAG, "Open failed", e)
                 _messages.tryEmit(e.message ?: "Couldn't open this project.")
@@ -149,6 +157,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Switches to Overlay mode (camera + image without AR tracking). */
+    fun useOverlayMode() {
+        _screen.value = Screen.OVERLAY
+    }
+
+    /** Switches to AR mode when this phone supports ARCore. */
+    fun useArMode() {
+        if (_arSupport.value != ArSupport.UNSUPPORTED) _screen.value = Screen.AR
+    }
+
     fun closeAr() {
         _screen.value = Screen.HOME
         viewModelScope.launch { flushPendingSave() }
@@ -162,6 +180,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             Log.w(TAG, "Thumbnail failed for ${project.id}", e)
             null
         }
+    }
+
+    private fun sketchScreen(): Screen = when {
+        _screen.value == Screen.OVERLAY -> Screen.OVERLAY
+        _arSupport.value == ArSupport.UNSUPPORTED -> Screen.OVERLAY
+        else -> Screen.AR
+    }
+
+    private suspend fun checkArSupport() {
+        val arCore = ArCoreApk.getInstance()
+        repeat(AR_CHECK_ATTEMPTS) {
+            val availability = arCore.checkAvailability(getApplication<Application>())
+            if (!availability.isTransient) {
+                _arSupport.value = when {
+                    availability == ArCoreApk.Availability.UNSUPPORTED_DEVICE_NOT_CAPABLE -> ArSupport.UNSUPPORTED
+                    availability.isSupported -> ArSupport.SUPPORTED
+                    else -> ArSupport.UNKNOWN
+                }
+                return
+            }
+            delay(AR_CHECK_INTERVAL_MS)
+        }
+        _arSupport.value = ArSupport.UNKNOWN
     }
 
     private suspend fun flushPendingSave() {
@@ -188,5 +229,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         const val TAG = "WallTraceVM"
         const val SAVE_DEBOUNCE_MS = 600L
         const val THUMBNAIL_CACHE_BYTES = 16 * 1024 * 1024
+        const val AR_CHECK_ATTEMPTS = 25
+        const val AR_CHECK_INTERVAL_MS = 200L
     }
 }

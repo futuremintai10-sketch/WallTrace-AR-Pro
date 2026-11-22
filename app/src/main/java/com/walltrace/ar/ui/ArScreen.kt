@@ -117,7 +117,15 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
-fun ArScreen(viewModel: MainViewModel, onBack: () -> Unit) {
+fun ArScreen(viewModel: MainViewModel, onBack: () -> Unit, onUseOverlay: () -> Unit) {
+    CameraPermissionGate(onBack = onBack) { activity ->
+        ArCameraContent(viewModel, activity, onBack, onUseOverlay)
+    }
+}
+
+/** Requests the camera permission and shows [content] once it is granted. */
+@Composable
+internal fun CameraPermissionGate(onBack: () -> Unit, content: @Composable (Activity) -> Unit) {
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
     var granted by remember { mutableStateOf(hasCameraPermission(context)) }
@@ -143,7 +151,7 @@ fun ArScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     }
 
     if (granted && activity != null) {
-        ArCameraContent(viewModel, activity, onBack)
+        content(activity)
     } else {
         PermissionRequest(
             onAllow = {
@@ -164,7 +172,12 @@ fun ArScreen(viewModel: MainViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ArCameraContent(viewModel: MainViewModel, activity: Activity, onBack: () -> Unit) {
+private fun ArCameraContent(
+    viewModel: MainViewModel,
+    activity: Activity,
+    onBack: () -> Unit,
+    onUseOverlay: () -> Unit
+) {
     val density = LocalDensity.current.density
     val renderer = remember {
         ArRenderer(density) { ContextCompat.getDisplayOrDefault(activity).rotation }
@@ -315,7 +328,8 @@ private fun ArCameraContent(viewModel: MainViewModel, activity: Activity, onBack
             setup = setup,
             status = status,
             onRetry = { controller.retry(glView) },
-            onBack = onBack
+            onBack = onBack,
+            onUseOverlay = onUseOverlay
         )
     }
 }
@@ -632,7 +646,7 @@ private fun LockButton(status: ArStatus, onCommand: (ArCommand) -> Unit) {
 }
 
 @Composable
-private fun OpacityRow(adjustments: SketchAdjustments, onChange: (SketchAdjustments) -> Unit) {
+internal fun OpacityRow(adjustments: SketchAdjustments, onChange: (SketchAdjustments) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Outlined.Opacity, contentDescription = "Opacity", tint = WtColors.TextMuted, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(10.dp))
@@ -655,7 +669,7 @@ private fun OpacityRow(adjustments: SketchAdjustments, onChange: (SketchAdjustme
 }
 
 @Composable
-private fun AdjustPanel(a: SketchAdjustments, onChange: (SketchAdjustments) -> Unit) {
+internal fun AdjustPanel(a: SketchAdjustments, onChange: (SketchAdjustments) -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -707,13 +721,13 @@ private fun AdjustPanel(a: SketchAdjustments, onChange: (SketchAdjustments) -> U
     }
 }
 
-private fun signedPercent(v: Float): String {
+internal fun signedPercent(v: Float): String {
     val p = (v * 100).roundToInt()
     return if (p > 0) "+$p%" else "$p%"
 }
 
 @Composable
-private fun LabeledSlider(
+internal fun LabeledSlider(
     label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
@@ -737,7 +751,7 @@ private fun LabeledSlider(
 }
 
 @Composable
-private fun ToggleChip(label: String, selected: Boolean, onToggle: (Boolean) -> Unit) {
+internal fun ToggleChip(label: String, selected: Boolean, onToggle: (Boolean) -> Unit) {
     FilterChip(
         selected = selected,
         onClick = { onToggle(!selected) },
@@ -753,7 +767,7 @@ private fun ToggleChip(label: String, selected: Boolean, onToggle: (Boolean) -> 
 }
 
 @Composable
-private fun ToolButton(
+internal fun ToolButton(
     icon: ImageVector,
     label: String,
     selected: Boolean = false,
@@ -779,7 +793,7 @@ private fun ToolButton(
 }
 
 @Composable
-private fun RoundIconButton(icon: ImageVector, contentDescription: String, onClick: () -> Unit) {
+internal fun RoundIconButton(icon: ImageVector, contentDescription: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(44.dp)
@@ -794,7 +808,7 @@ private fun RoundIconButton(icon: ImageVector, contentDescription: String, onCli
 }
 
 @Composable
-private fun DrawingModeBar(adjustments: SketchAdjustments, onChange: (SketchAdjustments) -> Unit) {
+internal fun DrawingModeBar(adjustments: SketchAdjustments, onChange: (SketchAdjustments) -> Unit) {
     Surface(
         color = WtColors.Overlay,
         shape = RoundedCornerShape(28.dp),
@@ -809,7 +823,7 @@ private fun DrawingModeBar(adjustments: SketchAdjustments, onChange: (SketchAdju
 }
 
 @Composable
-private fun sliderColors() = SliderDefaults.colors(
+internal fun sliderColors() = SliderDefaults.colors(
     thumbColor = WtColors.Teal,
     activeTrackColor = WtColors.Teal,
     inactiveTrackColor = WtColors.SurfaceHigh
@@ -820,7 +834,13 @@ private fun sliderColors() = SliderDefaults.colors(
 // -------------------------------------------------------------------------------------------------
 
 @Composable
-private fun SetupOverlay(setup: ArSetupState, status: ArStatus, onRetry: () -> Unit, onBack: () -> Unit) {
+private fun SetupOverlay(
+    setup: ArSetupState,
+    status: ArStatus,
+    onRetry: () -> Unit,
+    onBack: () -> Unit,
+    onUseOverlay: () -> Unit
+) {
     when (setup) {
         ArSetupState.Starting -> CenterCard {
             CircularProgressIndicator(color = WtColors.Teal, modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
@@ -839,6 +859,14 @@ private fun SetupOverlay(setup: ArSetupState, status: ArStatus, onRetry: () -> U
         is ArSetupState.Error -> CenterCard {
             Text(setup.message, color = WtColors.Text, textAlign = TextAlign.Center)
             Spacer(Modifier.height(16.dp))
+            if (setup.offerOverlay) {
+                Button(
+                    onClick = onUseOverlay,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = WtColors.Teal, contentColor = WtColors.OnTeal)
+                ) { Text("Use Overlay mode") }
+                Spacer(Modifier.height(10.dp))
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = onBack) { Text("Back", color = WtColors.Text) }
                 if (setup.canRetry) {
@@ -867,7 +895,7 @@ private fun SetupOverlay(setup: ArSetupState, status: ArStatus, onRetry: () -> U
 }
 
 @Composable
-private fun CenterCard(content: @Composable () -> Unit) {
+internal fun CenterCard(content: @Composable () -> Unit) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Surface(
             color = WtColors.Surface,
@@ -885,7 +913,7 @@ private fun CenterCard(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun PermissionRequest(onAllow: () -> Unit, onBack: () -> Unit) {
+internal fun PermissionRequest(onAllow: () -> Unit, onBack: () -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
@@ -920,10 +948,10 @@ private fun PermissionRequest(onAllow: () -> Unit, onBack: () -> Unit) {
     }
 }
 
-private fun hasCameraPermission(context: Context): Boolean =
+internal fun hasCameraPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
-private fun Context.findActivity(): Activity? {
+internal fun Context.findActivity(): Activity? {
     var ctx: Context? = this
     while (ctx is ContextWrapper) {
         if (ctx is Activity) return ctx

@@ -59,15 +59,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.google.ar.core.ArCoreApk
+import com.walltrace.ar.ArSupport
 import com.walltrace.ar.MainViewModel
 import com.walltrace.ar.data.Project
 import com.walltrace.ar.ui.theme.WtColors
-import kotlinx.coroutines.delay
 
 @Composable
 fun HomeScreen(viewModel: MainViewModel) {
@@ -75,22 +73,12 @@ fun HomeScreen(viewModel: MainViewModel) {
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var pendingDelete by remember { mutableStateOf<Project?>(null) }
-    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         viewModel.messages.collect { snackbar.showSnackbar(it) }
     }
 
-    val availability by produceState<ArCoreApk.Availability?>(initialValue = null) {
-        repeat(25) {
-            val result = ArCoreApk.getInstance().checkAvailability(context)
-            if (!result.isTransient) {
-                value = result
-                return@produceState
-            }
-            delay(200)
-        }
-    }
+    val arSupport by viewModel.arSupport.collectAsStateWithLifecycle()
 
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) viewModel.importImage(uri)
@@ -127,9 +115,12 @@ fun HomeScreen(viewModel: MainViewModel) {
                 }
             }
 
-            if (availability == ArCoreApk.Availability.UNSUPPORTED_DEVICE_NOT_CAPABLE) {
+            if (arSupport == ArSupport.UNSUPPORTED) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Banner("This device doesn't support ARCore, so wall tracking can't run here.")
+                    Banner(
+                        "This phone doesn't support ARCore, so WallTrace uses Overlay mode: " +
+                            "the image is shown over the camera. Keep the phone still on a stand while tracing."
+                    )
                 }
             }
 
