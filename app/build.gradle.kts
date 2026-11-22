@@ -45,7 +45,7 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
         textReport = true
-        textOutput = file("stdout")
+        textOutput = file("build/reports/lint-results-debug.txt")
     }
 
     testOptions {
