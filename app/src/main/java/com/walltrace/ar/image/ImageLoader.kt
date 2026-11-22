@@ -7,6 +7,7 @@ import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.net.Uri
 import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.exifinterface.media.ExifInterface
 import java.io.File
 import java.io.FileOutputStream
@@ -94,6 +95,7 @@ object ImageLoader {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.P)
     private fun decodeWithImageDecoder(file: File, maxSide: Int): Bitmap {
         val source = ImageDecoder.createSource(file)
         // ImageDecoder applies EXIF orientation automatically.
