@@ -259,7 +259,6 @@ class ArRenderer(
                 TrackingState.TRACKING -> CameraTracking.TRACKING
                 TrackingState.PAUSED -> if (scanStartMs == 0L) CameraTracking.INITIALIZING else CameraTracking.LIMITED
                 TrackingState.STOPPED -> CameraTracking.STOPPED
-                else -> CameraTracking.INITIALIZING
             },
             issue = if (cameraTracking) TrackingIssue.NONE else mapFailure(camera.trackingFailureReason),
             featurePoints = featurePoints,
@@ -602,7 +601,6 @@ class ArRenderer(
         TrackingFailureReason.EXCESSIVE_MOTION -> TrackingIssue.EXCESSIVE_MOTION
         TrackingFailureReason.INSUFFICIENT_FEATURES -> TrackingIssue.INSUFFICIENT_FEATURES
         TrackingFailureReason.CAMERA_UNAVAILABLE -> TrackingIssue.CAMERA_UNAVAILABLE
-        else -> TrackingIssue.BAD_STATE
     }
 
     private companion object {

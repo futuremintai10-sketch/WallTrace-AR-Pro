@@ -96,7 +96,6 @@ class ArSessionController(
                     return null
                 }
                 ArCoreApk.InstallStatus.INSTALLED -> Unit
-                null -> Unit
             }
             Session(activity).also { configure(it) }
         } catch (e: UnavailableUserDeclinedInstallationException) {

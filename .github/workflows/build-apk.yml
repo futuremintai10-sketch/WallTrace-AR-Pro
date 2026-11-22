@@ -51,6 +51,27 @@ jobs:
       - name: Android lint
         run: gradle --no-daemon lintDebug
 
+      - name: Test summary
+        if: always()
+        run: |
+          python3 - <<'EOF'
+          import glob, xml.etree.ElementTree as ET
+          total = failures = errors = skipped = 0
+          for f in glob.glob("app/build/test-results/testDebugUnitTest/*.xml"):
+              r = ET.parse(f).getroot()
+              total += int(r.get("tests", 0)); failures += int(r.get("failures", 0))
+              errors += int(r.get("errors", 0)); skipped += int(r.get("skipped", 0))
+              print(f"{r.get('name')}: {r.get('tests')} tests, {r.get('failures')} failures")
+          print(f"TOTAL: {total} tests, {failures} failures, {errors} errors, {skipped} skipped")
+          EOF
+
+      - name: Verify APK
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          ls -l "$APK"
+          AAPT="$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n 1)"
+          "$AAPT" dump badging "$APK" | grep -E "^package:|sdkVersion|targetSdkVersion|uses-permission|uses-feature|application-label:"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
