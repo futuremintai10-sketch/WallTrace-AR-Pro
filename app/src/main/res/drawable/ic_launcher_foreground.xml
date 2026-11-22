@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Frame representing the traced image on a wall -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M36,38 L72,38 L72,70 L36,70 Z"
+        android:strokeWidth="3"
+        android:strokeColor="#FF2EC4B6"
+        android:strokeLineJoin="round" />
+    <!-- Sketch stroke -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M42,62 Q50,44 56,54 T68,46"
+        android:strokeWidth="3"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round" />
+    <!-- Tracking dots -->
+    <path
+        android:fillColor="#FF2EC4B6"
+        android:pathData="M30,78 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+    <path
+        android:fillColor="#FF2EC4B6"
+        android:pathData="M54,80 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+    <path
+        android:fillColor="#FF2EC4B6"
+        android:pathData="M78,78 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+</vector>

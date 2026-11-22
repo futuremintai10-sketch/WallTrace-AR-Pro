@@ -1,0 +1,2 @@
+-keep class com.google.ar.** { *; }
+-dontwarn com.google.ar.**
